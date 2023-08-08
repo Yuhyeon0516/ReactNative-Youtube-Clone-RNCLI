@@ -77,6 +77,8 @@ const axiosInstance = axios.create({
 
 export function useYoutubeData() {
   const [data, setData] = useState<TypeListItem[]>([]);
+  const [hasNextPage, setHasNextPage] = useState<boolean>(true);
+  const [nextPageCursor, setNextPageCursor] = useState<string | null>(null);
 
   async function fetchUsedAxios() {
     try {
@@ -98,9 +100,16 @@ export function useYoutubeData() {
           title: item.snippet.title,
           thumbnail: item.snippet.thumbnails.high.url,
           publishedAt: item.snippet.publishedAt,
-          viewCount: parseInt(item.statistics.viewCount),
+          viewCount: parseInt(item.statistics.viewCount, 10),
           channelTtile: item.snippet.channelTitle,
         })),
+      );
+
+      setHasNextPage(typeof videoData.nextPageToken !== 'undefined');
+      setNextPageCursor(
+        typeof videoData.nextPageToken !== 'undefined'
+          ? videoData.nextPageToken
+          : null,
       );
     } catch (error) {
       console.error(error);
@@ -109,8 +118,57 @@ export function useYoutubeData() {
 
   const loadData = useCallback(fetchUsedAxios, []);
 
+  async function fetchUsedAxiosToMoreData() {
+    if (!hasNextPage) {
+      return;
+    }
+
+    try {
+      const videoResults = await axiosInstance.get<TypeVideoListResponse>(
+        '/videos',
+        {
+          params: {
+            key: API_KEY,
+            part: 'snippet, contentDetails, statistics',
+            chart: 'mostPopular',
+            regionCode: 'KR',
+            pageToken: nextPageCursor,
+          },
+        },
+      );
+
+      const videoData = videoResults.data;
+      setData(prev =>
+        prev.concat(
+          videoData.items.map(item => ({
+            title: item.snippet.title,
+            thumbnail: item.snippet.thumbnails.high.url,
+            publishedAt: item.snippet.publishedAt,
+            viewCount: parseInt(item.statistics.viewCount, 10),
+            channelTtile: item.snippet.channelTitle,
+          })),
+        ),
+      );
+
+      setHasNextPage(typeof videoData.nextPageToken !== 'undefined');
+      setNextPageCursor(
+        typeof videoData.nextPageToken !== 'undefined'
+          ? videoData.nextPageToken
+          : null,
+      );
+    } catch (error) {
+      console.error(error);
+    }
+  }
+
+  const loadMoreData = useCallback(fetchUsedAxiosToMoreData, [
+    hasNextPage,
+    nextPageCursor,
+  ]);
+
   return {
     data,
     loadData,
+    loadMoreData,
   };
 }
